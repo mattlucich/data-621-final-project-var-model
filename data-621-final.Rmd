@@ -1,0 +1,581 @@
+---
+title: "Data 621 Final"
+author: "Matthew Lucich"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r, include=FALSE}
+library(tidyverse)
+library(imputeMissings)
+library(vars)
+library(TSstudio)
+library(tseries)
+library(corrplot)
+library(stargazer)
+library(Metrics)
+```
+
+
+## Data Cleaning
+
+```{r, echo=FALSE}
+
+df_wb <- read_csv("world-bank.csv")
+
+#glimpse(df_wb)
+
+# Filter for Brazil, Russia, India, China, and South Africa 
+df_brics <- df_wb %>% filter(grepl("BRA|CHN|IND|RUS|ZAF", `Country Code`))
+
+variables_to_include <- "NY.GDP.PCAP.KD.ZG|FS.AST.CGOV.GD.ZS|FP.CPI.TOTL|NY.GDP.MKTP.KD.ZG|MS.MIL.XPND.GD.ZS|SE.PRM.AGES|DT.DOD.DSTC.ZS|SP.POP.TOTL"
+df_brics <- df_brics %>% filter(grepl(variables_to_include, `Series Code`))
+
+#glimpse(df_brics)
+
+```
+
+
+```{r, echo=FALSE}
+
+#unique(df_brics$`Series Name`)
+
+#colnames(df_brics)
+
+df_brics_wide <- df_brics %>% rename(country = "Country Name",
+                    country_code = "Country Code",
+                    var = "Series Name",
+                    var_code = "Series Code")
+
+df_brics_wide <- df_brics_wide %>% rename_with(~ gsub("\\[(.*?)\\]", "", .x))
+df_brics_wide <- df_brics_wide %>% rename_with(~ gsub(" ", "", .x))
+
+#glimpse(df_brics_wide)
+
+df_brics_wide['country_var'] <- paste(df_brics_wide$country, df_brics_wide$var)
+
+```
+
+
+
+
+```{r , echo=FALSE}
+
+df_brics_trim <- df_brics_wide %>% dplyr::select(-c(country, country_code, var, var_code))
+
+#transpose(df_brics_trim)
+
+# first remember the names
+n <- df_brics_trim$country_var
+
+# transpose all but the first column (name)
+df_brics_t <- as.data.frame(t(df_brics_trim[,-1]))
+colnames(df_brics_t) <- n
+
+df_brics_t %>% rename_with(~ gsub("\\((.*?)\\)", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub("\\((.*?)\\)", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub(" ", "_", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub(",", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub("\\.", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub("\\_$", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ tolower(gsub("-", "_", .x)))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub("n_federation", "", .x))
+df_brics_t <- df_brics_t %>% rename_with(~ gsub("_etc", "", .x))
+
+#head(df_brics_t)
+
+```
+
+
+```{r , echo=FALSE}
+
+df_brics_t[df_brics_t==".."] <- NA
+
+# Visualize NA counts for each column
+df_brics_t  %>%
+  summarise_all(list(~is.na(.)))%>%
+  pivot_longer(everything(),
+               names_to = "variables", values_to="missing") %>%
+  count(variables, missing) %>%
+  ggplot(aes(y=variables,x=n,fill=missing))+
+  geom_col()
+
+
+df_bics <- df_brics_t %>% dplyr::select(!starts_with("Russia"))
+
+#head(df_bics, 10)
+
+dim(df_bics)
+
+df_bics <- df_bics[10:49, ]
+
+#head(df_bics)
+
+#write.csv(df_bics,'bics-raw.csv')
+
+```
+
+
+```{r, echo=FALSE}
+
+# Visualize NA counts for each column
+df_bics  %>%
+  summarise_all(list(~is.na(.)))%>%
+  pivot_longer(everything(),
+               names_to = "variables", values_to="missing") %>%
+  count(variables, missing) %>%
+  ggplot(aes(y=variables,x=n,fill=missing))+
+  geom_col()
+
+```
+
+
+```{r, echo=FALSE}
+
+df_bics_imp <- df_bics %>% impute(object = NULL, method = "median/mode", flag = FALSE)
+
+head(df_bics_imp)
+
+```
+
+
+```{r, echo=FALSE}
+
+# Convert columns to numeric
+df_bics_num <- as.data.frame(lapply(df_bics_imp, as.numeric))
+
+# Histograms
+df_bics_num %>%
+  gather() %>%
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_density(fill = "steelblue", alpha=0.9, color="steelblue") +
+    geom_histogram(aes(y=..density..), alpha=0.5, fill = "lightblue", color="lightblue", position="identity")
+
+# Drop starting age variable due to low variance
+df_bics_num <- df_bics_num %>% dplyr::select(!ends_with("_age"))
+
+
+```
+
+
+
+```{r , echo=FALSE}
+
+# Visualize correlation between variables
+corrplot(cor(df_bics_num %>% dplyr::select(starts_with("Brazil"))), method="shade", shade.col=NA, tl.col="black", tl.srt=45)
+
+```
+
+
+
+```{r, echo=FALSE}
+
+braz_gdp <- ts(df_bics_num$brazil_gdp_growth, start = c(1981), frequency = 1)
+braz_claims <- ts(df_bics_num$brazil_claims_on_central_government, start = c(1981), frequency = 1)
+braz_cpi <- ts(df_bics_num$brazil_consumer_price_index, start = c(1981), frequency = 1)
+braz_milt <- ts(df_bics_num$brazil_military_expenditure, start = c(1981), frequency = 1)
+braz_st_debt <- ts(df_bics_num$brazil_short_term_debt, start = c(1981), frequency = 1)
+braz_pop <- ts(df_bics_num$brazil_population_total, start = c(1981), frequency = 1)
+
+india_gdp <- ts(df_bics_num$india_gdp_growth, start = c(1981), frequency = 1)
+india_claims <- ts(df_bics_num$india_claims_on_central_government, start = c(1981), frequency = 1)
+india_cpi <- ts(df_bics_num$india_consumer_price_index, start = c(1981), frequency = 1)
+india_milt <- ts(df_bics_num$india_military_expenditure, start = c(1981), frequency = 1)
+india_st_debt <- ts(df_bics_num$india_short_term_debt, start = c(1981), frequency = 1)
+india_pop <- ts(df_bics_num$india_population_total, start = c(1981), frequency = 1)
+
+china_gdp <- ts(df_bics_num$china_gdp_growth, start = c(1981), frequency = 1)
+china_claims <- ts(df_bics_num$china_claims_on_central_government, start = c(1981), frequency = 1)
+china_cpi <- ts(df_bics_num$china_consumer_price_index, start = c(1981), frequency = 1)
+china_milt <- ts(df_bics_num$china_military_expenditure, start = c(1981), frequency = 1)
+china_st_debt <- ts(df_bics_num$china_short_term_debt, start = c(1981), frequency = 1)
+china_pop <- ts(df_bics_num$china_population_total, start = c(1981), frequency = 1)
+
+so_af_gdp <- ts(df_bics_num$south_africa_gdp_growth, start = c(1981), frequency = 1)
+so_af_claims <- ts(df_bics_num$south_africa_claims_on_central_government, start = c(1981), frequency = 1)
+so_af_cpi <- ts(df_bics_num$south_africa_consumer_price_index, start = c(1981), frequency = 1)
+so_af_milt <- ts(df_bics_num$south_africa_military_expenditure, start = c(1981), frequency = 1)
+so_af_st_debt <- ts(df_bics_num$south_africa_short_term_debt, start = c(1981), frequency = 1)
+so_af_pop <- ts(df_bics_num$south_africa_population_total, start = c(1981), frequency = 1)
+
+```
+
+
+
+```{r, echo=FALSE}
+
+ts_plot(braz_gdp)
+ts_plot(braz_claims)
+ts_plot(braz_cpi)
+ts_plot(braz_milt)
+ts_plot(braz_st_debt)
+ts_plot(braz_pop)
+
+ts_plot(india_gdp)
+ts_plot(india_claims)
+ts_plot(india_cpi)
+ts_plot(india_milt)
+ts_plot(india_st_debt)
+ts_plot(india_pop)
+
+ts_plot(china_gdp)
+ts_plot(china_claims)
+ts_plot(china_cpi)
+ts_plot(china_milt)
+ts_plot(china_st_debt)
+ts_plot(china_pop)
+
+ts_plot(so_af_gdp)
+ts_plot(so_af_claims)
+ts_plot(so_af_cpi)
+ts_plot(so_af_milt)
+ts_plot(so_af_st_debt)
+ts_plot(so_af_pop)
+
+plot(cbind(diff(china_gdp), diff(china_cpi)))
+
+
+```
+
+
+## Test for Stationary
+
+```{r, echo=FALSE}
+
+pp.test(braz_claims)
+pp.test(braz_cpi)
+pp.test(braz_milt)
+pp.test(braz_st_debt)
+
+pp.test(diff(braz_claims))
+pp.test(diff(braz_cpi))
+pp.test(diff(braz_milt))
+pp.test(diff(braz_st_debt))
+
+```
+
+
+## Create vectors of time-series objects for modeling
+
+```{r, echo=FALSE}
+
+v2 <- cbind(diff(braz_gdp), diff(braz_claims), diff(braz_cpi), diff(braz_milt), diff(braz_st_debt))
+colnames(v2) <- cbind("braz_gdp_diff","braz_claims_diff","braz_cpi_diff","braz_milt_diff", "braz_st_debt_diff")
+
+```
+
+
+## Train, test split
+
+```{r, echo=FALSE}
+
+split_brazil <- ts_split(ts.obj = v2, sample.out = 4)
+
+train_brazil <- split_brazil$train
+test_brazil <- split_brazil$test
+
+length(train_brazil)
+length(test_brazil)
+
+```
+
+
+# VAR - Vector AutoRegressive model
+
+
+## Find optimal lag length
+
+```{r, echo=FALSE}
+
+lagselect <- VARselect(v2, lag.max = 10, type = "const")
+lagselect$selection
+
+```
+
+
+## Build VAR model
+
+```{r, echo=FALSE}
+
+Model1 <- VAR(v2, p = 3, type = "const", season = NULL, exog = NULL) 
+summary(Model1)
+
+```
+
+
+## Check for Serial Correlation
+
+```{r , echo=FALSE}
+
+Serial1 <- serial.test(Model1, lags.pt = 5, type = "PT.asymptotic")
+Serial1
+
+
+pacf(braz_gdp, lag = 6)
+
+```
+
+
+## Test for Heteroscedasticity
+
+```{r , echo=FALSE}
+
+Arch1 <- vars::arch.test(Model1, lags.multi = 15, multivariate.only = TRUE)
+Arch1
+
+```
+
+
+## Test for Normality of Residuals
+
+```{r , echo=FALSE}
+
+Norm1 <- normality.test(Model1, multivariate.only = TRUE)
+Norm1
+
+```
+
+
+## Check for Stability of model
+
+```{r , echo=FALSE}
+
+Stability1 <- stability(Model1, type = "OLS-CUSUM")
+plot(Stability1)
+
+```
+
+
+## Check for Granger Causality
+
+```{r , echo=FALSE}
+
+granger_gdp <- causality(Model1, cause = "braz_gdp_diff")
+granger_gdp
+
+granger_claims <- causality(Model1, cause = "braz_claims_diff")
+granger_claims
+
+granger_cpi <- causality(Model1, cause = "braz_cpi_diff")
+granger_cpi
+
+granger_milt <- causality(Model1, cause = "braz_milt_diff")
+granger_milt
+
+granger_debt <- causality(Model1, cause = "braz_st_debt_diff")
+granger_debt
+
+```
+
+
+
+## Create Impulse Response Functions
+
+```{r , echo=FALSE}
+
+# Black line outside of confidence interval means the response is significant!
+irf1 <- irf(Model1, impulse = "braz_milt_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.95)
+
+plot(irf1)
+
+```
+
+
+
+## Review Variance Decomposition
+
+```{r , echo=FALSE}
+
+vd1 <- fevd(Model1, n.ahead = 4)
+
+plot(vd1)
+
+```
+
+
+
+## Generate Predictions
+
+```{r , echo=FALSE}
+
+forecast <- predict(Model1, n.ahead = 4, ci = 0.95)
+fanchart(forecast, names = "braz_gdp_diff", colors = c("seagreen","tomato"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
+
+```
+
+# View Actuals vs Predicted
+
+```{r , echo=FALSE}
+
+index_pred <- append(index(train_brazil[,1]), 2017:2019)
+
+all_actuals <- append(train_brazil[,1], test_brazil[1:3,1])
+
+all_preds <- append(train_brazil[,1], forecast$fcst$braz_gdp_diff[,1])
+
+all_actuals_dediff <- diffinv(all_actuals, xi = braz_gdp[1])
+
+all_preds_dediff <- diffinv(all_preds, xi = braz_gdp[1])
+all_preds_dediff <- all_preds_dediff[-length(all_preds_dediff)]
+
+all_actuals_dediff
+all_preds_dediff
+
+length(index_pred)
+length(all_actuals_dediff)
+length(all_preds_dediff[-1])
+
+plot(index_pred,
+     all_preds_dediff[-1],
+     type = "l",
+     ylab="Actuals and Predicted",
+     xlab="Year",
+     col = "red")
+lines(index_pred,
+      all_actuals_dediff[-1],
+      type = "l",
+      col = "green")
+legend("topleft",
+c("Predicted","Actuals"),
+fill=c("red","green"))
+
+```
+
+## VAR - Evaluation Metrics
+
+```{r , echo=FALSE}
+
+# Root Mean Squared Error
+rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Root Mean Squared Error
+rmse(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+# Mean Absolute Error
+mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Mean Absolute Error
+mae(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+
+# Mean Absolute Percent Error
+mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Mean Absolute Percent Error
+mape(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+```
+
+# SVAR - Structural Vector AutoRegressive model
+
+## SVAR - Build SVAR model
+
+```{r, echo=FALSE}
+
+amat <- diag(5)
+
+amat[2,1] <- NA
+amat[3,1] <- NA
+amat[4,1] <- NA
+amat[5,1] <- NA
+amat[3,2] <- NA
+amat[4,2] <- NA
+amat[5,2] <- NA
+amat[4,3] <- NA
+amat[5,3] <- NA
+amat[5,4] <- NA
+
+SModel1 <- SVAR(Model1, Amat = amat, Bmat = NULL, hessian = TRUE, estmethod = c("scoring", "direct"))
+summary(SModel1)
+
+```
+
+
+## SVAR - Review Variance Decomposition
+
+```{r , echo=FALSE}
+
+vd1 <- fevd(SModel1, n.ahead = 4)
+
+plot(vd1)
+
+```
+
+
+## SVAR - Generate predictions
+
+
+```{r , echo=FALSE}
+
+irfvc <- irf(SModel1, n.ahead = 3, cumulative=TRUE)
+summary(irfvc)
+
+```
+
+
+# SVAR - View Actuals vs Predicted
+
+```{r , echo=FALSE}
+
+index_pred <- append(index(train_brazil[,1]), 2017:2019)
+
+all_actuals_svar <- append(train_brazil[,1], test_brazil[1:3,1])
+
+all_preds_svar <- append(train_brazil[,1], irfvc$irf$braz_gdp_diff[,1])
+
+all_actuals_dediff_svar <- diffinv(all_actuals_svar, xi = braz_gdp[1])
+
+all_preds_dediff_svar <- diffinv(all_preds_svar, xi = braz_gdp[1])
+all_preds_dediff_svar <- all_preds_dediff_svar[-length(all_preds_svar)]
+
+plot(index_pred,
+     all_preds_dediff_svar[-1],
+     type = "l",
+     ylab="Actuals and Predicted",
+     xlab="Year",
+     col = "red")
+lines(index_pred,
+      all_actuals_dediff_svar[-1],
+      type = "l",
+      col = "green")
+legend("topleft",
+c("Predicted","Actuals"),
+fill=c("red","green"))
+
+```
+
+## SVAR - Evaluation Metrics
+
+```{r , echo=FALSE}
+
+# Root Mean Squared Error
+rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Root Mean Squared Error
+rmse(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+# Mean Absolute Error
+mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Mean Absolute Error
+mae(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+# Mean Absolute Percent Error
+mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+# CONTEMP Mean Absolute Percent Error
+mape(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+
+```
+
+
+
+```{r , echo=FALSE}
+
+```
