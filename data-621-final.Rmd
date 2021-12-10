@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r, include=FALSE, echo=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 
@@ -19,12 +19,13 @@ library(tseries)
 library(corrplot)
 library(stargazer)
 library(Metrics)
+library(psych)
 ```
 
 
 ## Data Cleaning
 
-```{r, echo=FALSE}
+```{r}
 
 df_wb <- read_csv("world-bank.csv")
 
@@ -33,7 +34,7 @@ df_wb <- read_csv("world-bank.csv")
 # Filter for Brazil, Russia, India, China, and South Africa 
 df_brics <- df_wb %>% filter(grepl("BRA|CHN|IND|RUS|ZAF", `Country Code`))
 
-variables_to_include <- "NY.GDP.PCAP.KD.ZG|FS.AST.CGOV.GD.ZS|FP.CPI.TOTL|NY.GDP.MKTP.KD.ZG|MS.MIL.XPND.GD.ZS|SE.PRM.AGES|DT.DOD.DSTC.ZS|SP.POP.TOTL"
+variables_to_include <- "NY.GDP.PCAP.KD.ZG|FS.AST.CGOV.GD.ZS|FP.CPI.TOTL|NY.GDP.MKTP.KD.ZG|MS.MIL.XPND.GD.ZS|SE.PRM.AGES|DT.DOD.DSTC.ZS|SP.POP.TOTL|GB.XPD.RSDV.GD.ZS"
 df_brics <- df_brics %>% filter(grepl(variables_to_include, `Series Code`))
 
 #glimpse(df_brics)
@@ -64,7 +65,7 @@ df_brics_wide['country_var'] <- paste(df_brics_wide$country, df_brics_wide$var)
 
 
 
-```{r , echo=FALSE}
+```{r}
 
 df_brics_trim <- df_brics_wide %>% dplyr::select(-c(country, country_code, var, var_code))
 
@@ -77,7 +78,6 @@ n <- df_brics_trim$country_var
 df_brics_t <- as.data.frame(t(df_brics_trim[,-1]))
 colnames(df_brics_t) <- n
 
-df_brics_t %>% rename_with(~ gsub("\\((.*?)\\)", "", .x))
 df_brics_t <- df_brics_t %>% rename_with(~ gsub("\\((.*?)\\)", "", .x))
 df_brics_t <- df_brics_t %>% rename_with(~ gsub(" ", "_", .x))
 df_brics_t <- df_brics_t %>% rename_with(~ gsub(",", "", .x))
@@ -92,7 +92,7 @@ df_brics_t <- df_brics_t %>% rename_with(~ gsub("_etc", "", .x))
 ```
 
 
-```{r , echo=FALSE}
+```{r}
 
 df_brics_t[df_brics_t==".."] <- NA
 
@@ -141,6 +141,8 @@ df_bics_imp <- df_bics %>% impute(object = NULL, method = "median/mode", flag = 
 
 head(df_bics_imp)
 
+describe(df_bics_num)
+
 ```
 
 
@@ -165,7 +167,7 @@ df_bics_num <- df_bics_num %>% dplyr::select(!ends_with("_age"))
 
 
 
-```{r , echo=FALSE}
+```{r}
 
 # Visualize correlation between variables
 corrplot(cor(df_bics_num %>% dplyr::select(starts_with("Brazil"))), method="shade", shade.col=NA, tl.col="black", tl.srt=45)
@@ -208,38 +210,16 @@ so_af_pop <- ts(df_bics_num$south_africa_population_total, start = c(1981), freq
 
 
 
+# Brazil
+
+
+## Plot Series (overlayed)
+
 ```{r, echo=FALSE}
 
-ts_plot(braz_gdp)
-ts_plot(braz_claims)
-ts_plot(braz_cpi)
-ts_plot(braz_milt)
-ts_plot(braz_st_debt)
-ts_plot(braz_pop)
-
-ts_plot(india_gdp)
-ts_plot(india_claims)
-ts_plot(india_cpi)
-ts_plot(india_milt)
-ts_plot(india_st_debt)
-ts_plot(india_pop)
-
-ts_plot(china_gdp)
-ts_plot(china_claims)
-ts_plot(china_cpi)
-ts_plot(china_milt)
-ts_plot(china_st_debt)
-ts_plot(china_pop)
-
-ts_plot(so_af_gdp)
-ts_plot(so_af_claims)
-ts_plot(so_af_cpi)
-ts_plot(so_af_milt)
-ts_plot(so_af_st_debt)
-ts_plot(so_af_pop)
-
-plot(cbind(diff(china_gdp), diff(china_cpi)))
-
+ts.plot(diff(braz_gdp), diff(braz_claims), diff(braz_cpi), diff(braz_milt), diff(braz_st_debt),
+        gpars=list(xlab="year", ylab="Variables", col = 1:5, lty=c(1:5)))
+legend("topleft", legend = c("GDP", "Claims", "CPI", "Miltary", "Debt"), col = 1:5, lty=c(1:5))
 
 ```
 
@@ -265,8 +245,8 @@ pp.test(diff(braz_st_debt))
 
 ```{r, echo=FALSE}
 
-v2 <- cbind(diff(braz_gdp), diff(braz_claims), diff(braz_cpi), diff(braz_milt), diff(braz_st_debt))
-colnames(v2) <- cbind("braz_gdp_diff","braz_claims_diff","braz_cpi_diff","braz_milt_diff", "braz_st_debt_diff")
+braz_vec <- cbind(diff(braz_gdp), diff(braz_claims), diff(braz_cpi), diff(braz_milt), diff(braz_st_debt))
+colnames(braz_vec) <- cbind("braz_gdp_diff","braz_claims_diff","braz_cpi_diff","braz_milt_diff", "braz_st_debt_diff")
 
 ```
 
@@ -275,7 +255,7 @@ colnames(v2) <- cbind("braz_gdp_diff","braz_claims_diff","braz_cpi_diff","braz_m
 
 ```{r, echo=FALSE}
 
-split_brazil <- ts_split(ts.obj = v2, sample.out = 4)
+split_brazil <- ts_split(ts.obj = braz_vec, sample.out = 4)
 
 train_brazil <- split_brazil$train
 test_brazil <- split_brazil$test
@@ -293,7 +273,7 @@ length(test_brazil)
 
 ```{r, echo=FALSE}
 
-lagselect <- VARselect(v2, lag.max = 10, type = "const")
+lagselect <- VARselect(braz_vec, lag.max = 10, type = "const")
 lagselect$selection
 
 ```
@@ -303,72 +283,79 @@ lagselect$selection
 
 ```{r, echo=FALSE}
 
-Model1 <- VAR(v2, p = 3, type = "const", season = NULL, exog = NULL) 
-summary(Model1)
+braz_model <- VAR(braz_vec, p = 3, type = "const", season = NULL, exog = NULL) 
+summary(braz_model)
+
+```
+
+
+## Stargazer Output
+
+```{r, echo=FALSE}
+
+# 1) GDP 2) Claims 3) CPI 4) Milt 5) Debt
+stargazer(braz_model[["varresult"]], type="text")
 
 ```
 
 
 ## Check for Serial Correlation
 
-```{r , echo=FALSE}
+```{r}
 
-Serial1 <- serial.test(Model1, lags.pt = 5, type = "PT.asymptotic")
-Serial1
-
-
-pacf(braz_gdp, lag = 6)
+braz_serial <- serial.test(braz_model, type = "PT.asymptotic")
+braz_serial
 
 ```
 
 
 ## Test for Heteroscedasticity
 
-```{r , echo=FALSE}
+```{r}
 
-Arch1 <- vars::arch.test(Model1, lags.multi = 15, multivariate.only = TRUE)
-Arch1
+braz_arch <- vars::arch.test(braz_model, lags.multi = 15, multivariate.only = TRUE)
+braz_arch
 
 ```
 
 
 ## Test for Normality of Residuals
 
-```{r , echo=FALSE}
+```{r}
 
-Norm1 <- normality.test(Model1, multivariate.only = TRUE)
-Norm1
+braz_norm <- normality.test(braz_model, multivariate.only = TRUE)
+braz_norm
 
 ```
 
 
 ## Check for Stability of model
 
-```{r , echo=FALSE}
+```{r}
 
-Stability1 <- stability(Model1, type = "OLS-CUSUM")
-plot(Stability1)
+braz_stability <- stability(braz_model, type = "OLS-CUSUM")
+plot(braz_stability)
 
 ```
 
 
 ## Check for Granger Causality
 
-```{r , echo=FALSE}
+```{r}
 
-granger_gdp <- causality(Model1, cause = "braz_gdp_diff")
+granger_gdp <- causality(braz_model, cause = "braz_gdp_diff")
 granger_gdp
 
-granger_claims <- causality(Model1, cause = "braz_claims_diff")
+granger_claims <- causality(braz_model, cause = "braz_claims_diff")
 granger_claims
 
-granger_cpi <- causality(Model1, cause = "braz_cpi_diff")
+granger_cpi <- causality(braz_model, cause = "braz_cpi_diff")
 granger_cpi
 
-granger_milt <- causality(Model1, cause = "braz_milt_diff")
+granger_milt <- causality(braz_model, cause = "braz_milt_diff")
 granger_milt
 
-granger_debt <- causality(Model1, cause = "braz_st_debt_diff")
+granger_debt <- causality(braz_model, cause = "braz_st_debt_diff")
 granger_debt
 
 ```
@@ -377,12 +364,30 @@ granger_debt
 
 ## Create Impulse Response Functions
 
-```{r , echo=FALSE}
+```{r}
+
+
+#braz_all_irf <- irf(braz_model, response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 300, ci = 0.9, ortho = FALSE)
+#plot(braz_all_irf)
+
+
+#braz_all_irf <- irf(braz_model, response = "braz_gdp_diff", n.ahead = 4, boot = FALSE, ci = 0.9, ortho = FALSE)
+#plot(braz_all_irf)
+
 
 # Black line outside of confidence interval means the response is significant!
-irf1 <- irf(Model1, impulse = "braz_milt_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.95)
+braz_claims_irf <- irf(braz_model, impulse = "braz_claims_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 300, ci = 0.9, ortho = FALSE)
+plot(braz_claims_irf)
 
-plot(irf1)
+braz_cpi_irf <- irf(braz_model, impulse = "braz_cpi_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 300, ci = 0.9, ortho = FALSE)
+plot(braz_cpi_irf)
+
+braz_milt_irf <- irf(braz_model, impulse = "braz_milt_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 300, ci = 0.9, ortho = FALSE)
+plot(braz_milt_irf)
+
+# Debt has delayed impact on GDP?
+braz_debt_irf <- irf(braz_model, impulse = "braz_st_debt_diff", response = "braz_gdp_diff", n.ahead = 4, boot = TRUE, run = 300, ci = 0.9, ortho = FALSE)
+plot(braz_debt_irf)
 
 ```
 
@@ -390,9 +395,9 @@ plot(irf1)
 
 ## Review Variance Decomposition
 
-```{r , echo=FALSE}
+```{r}
 
-vd1 <- fevd(Model1, n.ahead = 4)
+vd1 <- fevd(braz_model, n.ahead = 4)
 
 plot(vd1)
 
@@ -402,16 +407,16 @@ plot(vd1)
 
 ## Generate Predictions
 
-```{r , echo=FALSE}
+```{r}
 
-forecast <- predict(Model1, n.ahead = 4, ci = 0.95)
-fanchart(forecast, names = "braz_gdp_diff", colors = c("seagreen","tomato"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
+forecast <- predict(braz_model, n.ahead = 4, ci = 0.95)
+fanchart(forecast, names = "braz_gdp_diff", colors = c("seagreen","lightgreen"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
 
 ```
 
 # View Actuals vs Predicted
 
-```{r , echo=FALSE}
+```{r}
 
 index_pred <- append(index(train_brazil[,1]), 2017:2019)
 
@@ -447,30 +452,33 @@ fill=c("red","green"))
 
 ```
 
+
+
 ## VAR - Evaluation Metrics
 
-```{r , echo=FALSE}
+```{r}
 
 # Root Mean Squared Error
+print("Root Mean Squared Error")
 rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
 
-# CONTEMP Root Mean Squared Error
-rmse(all_actuals_dediff[36:38], all_preds_dediff[37:39])
 
 # Mean Absolute Error
+print("Mean Absolute Error")
 mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
-
-# CONTEMP Mean Absolute Error
-mae(all_actuals_dediff[36:38], all_preds_dediff[37:39])
 
 
 # Mean Absolute Percent Error
+print("Mean Absolute Percent Error")
 mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
 
-# CONTEMP Mean Absolute Percent Error
-mape(all_actuals_dediff[36:38], all_preds_dediff[37:39])
-
 ```
+
+
+
+
+
+
 
 # SVAR - Structural Vector AutoRegressive model
 
@@ -491,17 +499,17 @@ amat[4,3] <- NA
 amat[5,3] <- NA
 amat[5,4] <- NA
 
-SModel1 <- SVAR(Model1, Amat = amat, Bmat = NULL, hessian = TRUE, estmethod = c("scoring", "direct"))
-summary(SModel1)
+braz_svar_model <- SVAR(braz_model, Amat = amat, Bmat = NULL, hessian = TRUE, estmethod = c("scoring", "direct"))
+summary(braz_svar_model)
 
 ```
 
 
 ## SVAR - Review Variance Decomposition
 
-```{r , echo=FALSE}
+```{r}
 
-vd1 <- fevd(SModel1, n.ahead = 4)
+vd1 <- fevd(braz_svar_model, n.ahead = 4)
 
 plot(vd1)
 
@@ -511,9 +519,9 @@ plot(vd1)
 ## SVAR - Generate predictions
 
 
-```{r , echo=FALSE}
+```{r}
 
-irfvc <- irf(SModel1, n.ahead = 3, cumulative=TRUE)
+irfvc <- irf(braz_svar_model, n.ahead = 3, cumulative=TRUE)
 summary(irfvc)
 
 ```
@@ -521,7 +529,7 @@ summary(irfvc)
 
 # SVAR - View Actuals vs Predicted
 
-```{r , echo=FALSE}
+```{r}
 
 index_pred <- append(index(train_brazil[,1]), 2017:2019)
 
@@ -552,30 +560,803 @@ fill=c("red","green"))
 
 ## SVAR - Evaluation Metrics
 
-```{r , echo=FALSE}
+```{r}
 
 # Root Mean Squared Error
-rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+print("Root Mean Squared Error")
+rmse(all_actuals_dediff_svar[37:39], all_preds_dediff_svar[37:39])
 
-# CONTEMP Root Mean Squared Error
-rmse(all_actuals_dediff[36:38], all_preds_dediff[37:39])
 
 # Mean Absolute Error
-mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+print("Mean Absolute Error")
+mae(all_actuals_dediff_svar[37:39], all_preds_dediff_svar[37:39])
 
-# CONTEMP Mean Absolute Error
-mae(all_actuals_dediff[36:38], all_preds_dediff[37:39])
 
 # Mean Absolute Percent Error
+print("Mean Absolute Percent Error")
+mape(all_actuals_dediff_svar[37:39], all_preds_dediff_svar[37:39])
+
+```
+
+
+
+
+
+
+# India
+
+
+## Plot Series (overlayed)
+
+```{r, echo=FALSE}
+
+ts.plot(diff(india_gdp), diff(india_claims), diff(india_cpi), diff(india_milt), diff(india_st_debt),
+        gpars=list(xlab="year", ylab="Variables", col = 1:5, lty=c(1:5)))
+legend("topleft", legend = c("GDP", "Claims", "CPI", "Miltary", "Debt"), col = 1:5, lty=c(1:5))
+
+```
+
+
+## Test for Stationary
+
+```{r, echo=FALSE}
+
+pp.test(india_claims)
+pp.test(india_cpi)
+pp.test(india_milt)
+pp.test(india_st_debt)
+
+pp.test(diff(india_claims))
+pp.test(diff(india_cpi))
+pp.test(diff(india_milt))
+pp.test(diff(india_st_debt))
+
+```
+
+
+## Create vectors of time-series objects for modeling
+
+```{r, echo=FALSE}
+
+india_vec <- cbind(diff(india_gdp), diff(india_claims), diff(india_cpi), diff(india_milt), diff(india_st_debt))
+colnames(india_vec) <- cbind("india_gdp_diff","india_claims_diff","india_cpi_diff","india_milt_diff", "india_st_debt_diff")
+
+```
+
+
+## Train, test split
+
+```{r, echo=FALSE}
+
+split_india <- ts_split(ts.obj = india_vec, sample.out = 4)
+
+train_india <- split_india$train
+test_india <- split_india$test
+
+length(train_india)
+length(test_india)
+
+```
+
+
+# VAR - Vector AutoRegressive model
+
+
+## Find optimal lag length
+
+```{r, echo=FALSE}
+
+lagselect <- VARselect(india_vec, lag.max = 10, type = "const")
+lagselect$selection
+
+```
+
+
+## Build VAR model
+
+```{r, echo=FALSE}
+
+india_model <- VAR(india_vec, p = 4, type = "const", season = NULL, exog = NULL) 
+summary(india_model)
+
+```
+
+
+## Stargazer Output
+
+```{r, echo=FALSE}
+
+stargazer(india_model[["varresult"]], type="text")
+
+```
+
+
+## Check for Serial Correlation
+
+```{r}
+
+india_serial <- serial.test(india_model, type = "PT.asymptotic")
+india_serial
+
+```
+
+
+## Test for Heteroscedasticity
+
+```{r}
+
+india_arch <- vars::arch.test(india_model, lags.multi = 15, multivariate.only = TRUE)
+india_arch
+
+```
+
+
+## Test for Normality of Residuals
+
+```{r}
+
+india_norm <- normality.test(india_model, multivariate.only = TRUE)
+india_norm
+
+```
+
+
+## Check for Stability of model
+
+```{r}
+
+india_stability <- stability(india_model, type = "OLS-CUSUM")
+plot(india_stability)
+
+```
+
+
+## Check for Granger Causality
+
+```{r}
+
+granger_gdp <- causality(india_model, cause = "india_gdp_diff")
+granger_gdp
+
+granger_claims <- causality(india_model, cause = "india_claims_diff")
+granger_claims
+
+granger_cpi <- causality(india_model, cause = "india_cpi_diff")
+granger_cpi
+
+granger_milt <- causality(india_model, cause = "india_milt_diff")
+granger_milt
+
+granger_debt <- causality(india_model, cause = "india_st_debt_diff")
+granger_debt
+
+```
+
+
+
+## Create Impulse Response Functions
+
+```{r}
+
+# Black line outside of confidence interval means the response is significant!
+india_claims_irf <- irf(india_model, impulse = "india_claims_diff", response = "india_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(india_claims_irf)
+
+india_cpi_irf <- irf(india_model, impulse = "india_cpi_diff", response = "india_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(india_cpi_irf)
+
+india_milt_irf <- irf(india_model, impulse = "india_milt_diff", response = "india_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(india_milt_irf)
+
+# Debt has delayed impact on GDP?
+india_debt_irf <- irf(india_model, impulse = "india_st_debt_diff", response = "india_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(india_debt_irf)
+
+
+```
+
+
+
+## Review Variance Decomposition
+
+```{r}
+
+vd1 <- fevd(india_model, n.ahead = 4)
+
+plot(vd1)
+
+```
+
+
+
+## Generate Predictions
+
+```{r}
+
+forecast <- predict(india_model, n.ahead = 4, ci = 0.95)
+fanchart(forecast, names = "india_gdp_diff", colors = c("seagreen","lightgreen"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
+
+```
+
+# View Actuals vs Predicted
+
+```{r}
+
+index_pred <- append(index(train_india[,1]), 2017:2019)
+
+all_actuals <- append(train_india[,1], test_india[1:3,1])
+
+all_preds <- append(train_india[,1], forecast$fcst$india_gdp_diff[,1])
+
+all_actuals_dediff <- diffinv(all_actuals, xi = india_gdp[1])
+
+all_preds_dediff <- diffinv(all_preds, xi = india_gdp[1])
+all_preds_dediff <- all_preds_dediff[-length(all_preds_dediff)]
+
+all_actuals_dediff
+all_preds_dediff
+
+length(index_pred)
+length(all_actuals_dediff)
+length(all_preds_dediff[-1])
+
+plot(index_pred,
+     all_preds_dediff[-1],
+     type = "l",
+     ylab="Actuals and Predicted",
+     xlab="Year",
+     col = "red")
+lines(index_pred,
+      all_actuals_dediff[-1],
+      type = "l",
+      col = "green")
+legend("topleft",
+c("Predicted","Actuals"),
+fill=c("red","green"))
+
+```
+
+## VAR - Evaluation Metrics
+
+```{r}
+
+# Root Mean Squared Error
+print("Root Mean Squared Error")
+rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Error
+print("Mean Absolute Error")
+mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Percent Error
+print("Mean Absolute Percent Error")
 mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
 
-# CONTEMP Mean Absolute Percent Error
-mape(all_actuals_dediff[36:38], all_preds_dediff[37:39])
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# China
+
+
+## Plot Series (overlayed)
+
+```{r, echo=FALSE}
+
+ts.plot(diff(china_gdp), diff(china_claims), diff(china_cpi), diff(china_milt), diff(china_st_debt),
+        gpars=list(xlab="year", ylab="Variables", col = 1:5, lty=c(1:5)))
+legend("topleft", legend = c("GDP", "Claims", "CPI", "Miltary", "Debt"), col = 1:5, lty=c(1:5))
+
+```
+
+
+## Test for Stationary
+
+```{r, echo=FALSE}
+
+pp.test(china_claims)
+pp.test(china_cpi)
+pp.test(china_milt)
+pp.test(china_st_debt)
+
+pp.test(diff(china_claims))
+pp.test(diff(china_cpi))
+pp.test(diff(china_milt))
+pp.test(diff(china_st_debt))
+
+```
+
+
+## Create vectors of time-series objects for modeling
+
+```{r, echo=FALSE}
+
+china_vec <- cbind(diff(china_gdp), diff(china_claims), diff(china_cpi), diff(china_milt), diff(china_st_debt))
+colnames(china_vec) <- cbind("china_gdp_diff","china_claims_diff","china_cpi_diff","china_milt_diff", "china_st_debt_diff")
+
+```
+
+
+## Train, test split
+
+```{r, echo=FALSE}
+
+split_china <- ts_split(ts.obj = china_vec, sample.out = 4)
+
+train_china <- split_china$train
+test_china <- split_china$test
+
+length(train_china)
+length(test_china)
+
+```
+
+
+# VAR - Vector AutoRegressive model
+
+
+## Find optimal lag length
+
+```{r, echo=FALSE}
+
+lagselect <- VARselect(china_vec, lag.max = 10, type = "const")
+lagselect$selection
+
+```
+
+
+## Build VAR model
+
+```{r, echo=FALSE}
+
+china_model <- VAR(china_vec, p = 4, type = "const", season = NULL, exog = NULL) 
+summary(china_model)
+
+```
+
+
+## Stargazer Output
+
+```{r, echo=FALSE}
+
+stargazer(china_model[["varresult"]], type="text")
+
+```
+
+
+## Check for Serial Correlation
+
+```{r}
+
+china_serial <- serial.test(china_model, type = "PT.asymptotic")
+china_serial
+
+```
+
+
+## Test for Heteroscedasticity
+
+```{r}
+
+china_arch <- vars::arch.test(china_model, lags.multi = 15, multivariate.only = TRUE)
+china_arch
+
+```
+
+
+## Test for Normality of Residuals
+
+```{r}
+
+china_norm <- normality.test(china_model)
+china_norm
+
+```
+
+
+## Check for Stability of model
+
+```{r}
+
+china_stability <- stability(china_model, type = "OLS-CUSUM")
+plot(china_stability)
+
+```
+
+
+## Check for Granger Causality
+
+```{r}
+
+granger_gdp <- causality(china_model, cause = "china_gdp_diff")
+granger_gdp
+
+granger_claims <- causality(china_model, cause = "china_claims_diff")
+granger_claims
+
+granger_cpi <- causality(china_model, cause = "china_cpi_diff")
+granger_cpi
+
+granger_milt <- causality(china_model, cause = "china_milt_diff")
+granger_milt
+
+granger_debt <- causality(china_model, cause = "china_st_debt_diff")
+granger_debt
 
 ```
 
 
 
-```{r , echo=FALSE}
+## Create Impulse Response Functions
+
+```{r}
+
+# Black line outside of confidence interval means the response is significant!
+china_claims_irf <- irf(china_model, impulse = "china_claims_diff", response = "china_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(china_claims_irf)
+
+china_cpi_irf <- irf(china_model, impulse = "china_cpi_diff", response = "china_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(china_cpi_irf)
+
+china_milt_irf <- irf(china_model, impulse = "china_milt_diff", response = "china_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(china_milt_irf)
+
+# Debt has delayed impact on GDP?
+china_debt_irf <- irf(china_model, impulse = "china_st_debt_diff", response = "china_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(china_debt_irf)
+
 
 ```
+
+
+
+## Review Variance Decomposition
+
+```{r}
+
+vd1 <- fevd(china_model, n.ahead = 4)
+
+plot(vd1)
+
+```
+
+
+
+## Generate Predictions (differenced data)
+
+```{r}
+
+forecast <- predict(china_model, n.ahead = 4, ci = 0.95)
+fanchart(forecast, names = "china_gdp_diff", colors = c("seagreen","lightgreen"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
+
+```
+
+# View Actuals vs Predicted
+
+```{r}
+
+index_pred <- append(index(train_china[,1]), 2017:2019)
+
+all_actuals <- append(train_china[,1], test_china[1:3,1])
+
+all_preds <- append(train_china[,1], forecast$fcst$china_gdp_diff[,1])
+
+all_actuals_dediff <- diffinv(all_actuals, xi = china_gdp[1])
+
+all_preds_dediff <- diffinv(all_preds, xi = china_gdp[1])
+all_preds_dediff <- all_preds_dediff[-length(all_preds_dediff)]
+
+all_actuals_dediff
+all_preds_dediff
+
+plot(index_pred,
+     all_preds_dediff[-1],
+     type = "l",
+     ylab="Actuals and Predicted",
+     xlab="Year",
+     col = "red")
+lines(index_pred,
+      all_actuals_dediff[-1],
+      type = "l",
+      col = "green")
+legend("topleft",
+c("Predicted","Actuals"),
+fill=c("red","green"))
+
+```
+
+
+
+## VAR - Evaluation Metrics
+
+```{r}
+
+# Root Mean Squared Error
+print("Root Mean Squared Error")
+rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Error
+print("Mean Absolute Error")
+mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Percent Error
+print("Mean Absolute Percent Error")
+mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+```
+
+
+
+# South Africa
+
+
+## Plot Series (overlayed)
+
+```{r, echo=FALSE}
+
+ts.plot(diff(so_af_gdp), diff(so_af_claims), diff(so_af_cpi), diff(so_af_milt), diff(so_af_st_debt),
+        gpars=list(xlab="year", ylab="Variables", col = 1:5, lty=c(1:5)))
+legend("topleft", legend = c("GDP", "Claims", "CPI", "Miltary", "Debt"), col = 1:5, lty=c(1:5))
+
+```
+
+
+## Test for Stationary
+
+```{r, echo=FALSE}
+
+pp.test(so_af_claims)
+pp.test(so_af_cpi)
+pp.test(so_af_milt)
+pp.test(so_af_st_debt)
+
+pp.test(diff(so_af_claims))
+pp.test(diff(so_af_cpi))
+pp.test(diff(so_af_milt))
+pp.test(diff(so_af_st_debt))
+
+```
+
+
+## Create vectors of time-series objects for modeling
+
+```{r, echo=FALSE}
+
+#so_af_vec <- cbind(diff(so_af_gdp), diff(so_af_claims), diff(so_af_cpi), diff(so_af_milt), diff(so_af_st_debt))
+#colnames(so_af_vec) <- cbind("so_af_gdp_diff","so_af_claims_diff","so_af_cpi_diff","so_af_milt_diff", "so_af_st_debt_diff")
+
+so_af_vec <- cbind(diff(so_af_gdp), diff(so_af_claims), diff(so_af_cpi), diff(so_af_milt))
+colnames(so_af_vec) <- cbind("so_af_gdp_diff","so_af_claims_diff","so_af_cpi_diff","so_af_milt_diff")
+
+```
+
+
+## Train, test split
+
+```{r, echo=FALSE}
+
+split_so_af <- ts_split(ts.obj = so_af_vec, sample.out = 4)
+
+train_so_af <- split_so_af$train
+test_so_af <- split_so_af$test
+
+length(train_so_af)
+length(test_so_af)
+
+```
+
+
+# VAR - Vector AutoRegressive model
+
+
+## Find optimal lag length
+
+```{r, echo=FALSE}
+
+lagselect <- VARselect(so_af_vec, lag.max = 10, type = "const")
+lagselect$selection
+
+```
+
+
+## Build VAR model
+
+```{r, echo=FALSE}
+
+so_af_model <- VAR(so_af_vec, p = 4, type = "const", season = NULL, exog = NULL) 
+#summary(so_af_model)
+
+```
+
+
+## Stargazer Output
+
+```{r, echo=FALSE}
+
+stargazer(so_af_model[["varresult"]], type="text")
+
+```
+
+
+## Check for Serial Correlation
+
+```{r}
+
+so_af_serial <- serial.test(so_af_model, type = "PT.asymptotic")
+so_af_serial
+
+```
+
+
+## Test for Heteroscedasticity
+
+```{r}
+
+so_af_arch <- vars::arch.test(so_af_model, lags.multi = 15, multivariate.only = TRUE)
+so_af_arch
+
+```
+
+
+## Test for Normality of Residuals
+
+```{r}
+
+so_af_norm <- normality.test(so_af_model, multivariate.only = TRUE)
+so_af_norm
+#plot(so_af_model)
+
+```
+
+
+## Check for Stability of model
+
+```{r}
+
+so_af_stability <- stability(so_af_model, type = "OLS-CUSUM")
+plot(so_af_stability)
+
+```
+
+
+## Check for Granger Causality
+
+```{r}
+
+granger_gdp <- causality(so_af_model, cause = "so_af_gdp_diff")
+granger_gdp
+
+granger_claims <- causality(so_af_model, cause = "so_af_claims_diff")
+granger_claims
+
+granger_cpi <- causality(so_af_model, cause = "so_af_cpi_diff")
+granger_cpi
+
+granger_milt <- causality(so_af_model, cause = "so_af_milt_diff")
+granger_milt
+
+```
+
+
+
+## Create Impulse Response Functions
+
+```{r}
+
+# Black line outside of confidence interval means the response is significant!
+so_af_claims_irf <- irf(so_af_model, impulse = "so_af_claims_diff", response = "so_af_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(so_af_claims_irf)
+
+so_af_cpi_irf <- irf(so_af_model, impulse = "so_af_cpi_diff", response = "so_af_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(so_af_cpi_irf)
+
+so_af_milt_irf <- irf(so_af_model, impulse = "so_af_milt_diff", response = "so_af_gdp_diff", n.ahead = 4, boot = TRUE, run = 200, ci = 0.9, ortho = FALSE)
+plot(so_af_milt_irf)
+
+```
+
+
+
+## Review Variance Decomposition
+
+```{r}
+
+vd1 <- fevd(so_af_model, n.ahead = 4)
+
+plot(vd1)
+
+```
+
+
+
+## Generate Predictions
+
+```{r}
+
+forecast <- predict(so_af_model, n.ahead = 4, ci = 0.95)
+fanchart(forecast, names = "so_af_gdp_diff", colors = c("seagreen","lightgreen"), main = "Forecasts", xlab = "Year", ylab = "GDP Growth %")
+
+```
+
+# View Actuals vs Predicted
+
+```{r}
+
+index_pred <- append(index(train_so_af[,1]), 2017:2019)
+
+all_actuals <- append(train_so_af[,1], test_so_af[1:3,1])
+
+all_preds <- append(train_so_af[,1], forecast$fcst$so_af_gdp_diff[,1])
+
+all_actuals_dediff <- diffinv(all_actuals, xi = so_af_gdp[1])
+
+all_preds_dediff <- diffinv(all_preds, xi = so_af_gdp[1])
+all_preds_dediff <- all_preds_dediff[-length(all_preds_dediff)]
+
+all_actuals_dediff
+all_preds_dediff
+
+length(index_pred)
+length(all_actuals_dediff)
+length(all_preds_dediff[-1])
+
+plot(index_pred,
+     all_preds_dediff[-1],
+     type = "l",
+     ylab="Actuals and Predicted",
+     xlab="Year",
+     col = "red")
+lines(index_pred,
+      all_actuals_dediff[-1],
+      type = "l",
+      col = "green")
+legend("topleft",
+c("Predicted","Actuals"),
+fill=c("red","green"))
+
+```
+
+## VAR - Evaluation Metrics
+
+```{r}
+
+# Root Mean Squared Error
+print("Root Mean Squared Error")
+rmse(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Error
+print("Mean Absolute Error")
+mae(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+
+# Mean Absolute Percent Error
+print("Mean Absolute Percent Error")
+mape(all_actuals_dediff[37:39], all_preds_dediff[37:39])
+
+```
+
+
+
+
+
+
+
+
+
+
+
